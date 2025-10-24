@@ -5,70 +5,66 @@
 # Мова: Python 3.13
 # ===============================================
 
-#бібліотеки
-import pandas as pd
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 from statsmodels.tsa.seasonal import seasonal_decompose
 from statsmodels.tsa.stattools import acf
-from statsmodels.tsa.arima.model import ARIMA
 
-#вхідні дані
-# продажі косметичного бренду лореаль
-months = pd.date_range(start="2022-01-01", periods=36, freq="ME")  # ME = month end
+months = pd.date_range(start="2022-01-01", periods=36, freq="M")
 np.random.seed(42)
+sales = 100 + np.linspace(0, 60, 36) + 10*np.sin(np.arange(36)/2) + np.random.normal(0, 4, 36)
+df = pd.DataFrame({"Month": months, "Sales": sales})
+df.to_csv("cosmetic_sales.csv", index=False)
 
-sales = 2000 + np.sin(np.linspace(0, 3 * np.pi, 36)) * 300 + np.random.normal(0, 120, 36)
-data = pd.DataFrame({"Дата": months, "Продажі": sales})
-data.set_index("Дата", inplace=True)
-
-#побудова графіків
-plt.figure(figsize=(10, 5))
-plt.plot(data.index, data["Продажі"], marker='o', color='purple', label="Продажі бренду")
-plt.title("Динаміка продажів косметичного бренду")
-plt.xlabel("Дата")
-plt.ylabel("Продажі (од.)")
-plt.legend()
+plt.figure(figsize=(9, 4))
+plt.plot(df["Month"], df["Sales"], marker="o", color="purple")
+plt.title("Продажі косметичного бренду у часі")
+plt.xlabel("Місяць")
+plt.ylabel("Продажі (тис. грн)")
 plt.grid(True)
-plt.show()
+plt.tight_layout()
+plt.savefig("1_trend.png", dpi=150)
+plt.close()
 
-#час
-result = seasonal_decompose(data["Продажі"], model="additive", period=12)
-result.plot()
-plt.suptitle("Розкладання часового ряду на складові", y=1.03)
-plt.show()
+values = df["Sales"].values
+up, down = 0, 0
+trend = 0
+for i in range(1, len(values)):
+    if values[i] > values[i-1]:
+        if trend != 1:
+            up += 1
+            trend = 1
+    elif values[i] < values[i-1]:
+        if trend != -1:
+            down += 1
+            trend = -1
+print(f"Висхідних серій: {up}, низхідних: {down}")
+if up > down:
+    print("Тенденція присутня — продажі зростають.")
+else:
+    print("Тенденція відсутня або нестійка.")
 
-#автокореляційна функція
-acf_values = acf(result.resid.dropna(), nlags=20)
+decomp = seasonal_decompose(df["Sales"], model='additive', period=12)
+fig = decomp.plot()
+fig.set_size_inches(9, 6)
+plt.suptitle("Декомпозиція продажів косметичного бренду")
+plt.tight_layout()
+plt.savefig("2_decomposition.png", dpi=150)
+plt.close()
+
+residuals = decomp.resid.dropna()
+acf_vals = acf(residuals, nlags=24)
 plt.figure(figsize=(8, 4))
-plt.stem(acf_values)  # без use_line_collection
-plt.title("Автокореляційна функція залишкової компоненти")
+plt.stem(range(len(acf_vals)), acf_vals)
+plt.title("Автокореляційна функція випадкової складової")
 plt.xlabel("Лаг")
-plt.ylabel("Коефіцієнт автокореляції")
-plt.show()
+plt.ylabel("ACF")
+plt.tight_layout()
+plt.savefig("3_acf.png", dpi=150)
+plt.close()
 
-#аріма
-model = ARIMA(data["Продажі"], order=(1, 1, 1))
-model_fit = model.fit()
-
-#прогнози продажів
-forecast = model_fit.forecast(steps=6)
-future_dates = pd.date_range(data.index[-1], periods=7, freq="ME")[1:]
-
-plt.figure(figsize=(10, 5))
-plt.plot(data.index, data["Продажі"], label="Фактичні дані", color='purple')
-plt.plot(future_dates, forecast, label="Прогноз", color='red', linestyle='--', marker='o')
-plt.title("Прогноз продажів косметичного бренду (ARIMA)")
-plt.xlabel("Дата")
-plt.ylabel("Продажі (од.)")
-plt.legend()
-plt.grid(True)
-plt.show()
-
-#висновок
-print("\n=== ВИСНОВОК ===")
-print("1. У часовому ряді спостерігається тренд і сезонність.")
-print("2. Модель ARIMA(1,1,1) добре апроксимує дані.")
-print("3. Прогноз демонструє потенційне зростання продажів у майбутні місяці.")
-print("4. Методика може бути застосована до реальних даних косметичних компаній.")
+if np.abs(acf_vals[1]) < 0.3:
+    print("Розкладання коректне — випадкова складова стаціонарна.")
+else:
+    print("Можливо, залишилась частина тренду — потрібна перевірка.")
